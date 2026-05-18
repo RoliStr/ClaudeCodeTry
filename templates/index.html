@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDF → Excel (Mistral OCR)</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f0f4f8;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+      padding: 48px 40px;
+      max-width: 520px;
+      width: 100%;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 1.75rem;
+      color: #1a1a2e;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: #6b7280;
+      font-size: 0.95rem;
+      margin-bottom: 36px;
+    }
+
+    .drop-zone {
+      border: 2px dashed #6366f1;
+      border-radius: 12px;
+      padding: 48px 24px;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+      position: relative;
+    }
+
+    .drop-zone:hover, .drop-zone.dragover {
+      background: #f0f0ff;
+      border-color: #4f46e5;
+    }
+
+    .drop-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+
+    .drop-icon { font-size: 3rem; margin-bottom: 12px; }
+
+    .drop-label {
+      color: #374151;
+      font-size: 1rem;
+    }
+
+    .drop-hint {
+      color: #9ca3af;
+      font-size: 0.85rem;
+      margin-top: 6px;
+    }
+
+    #file-name {
+      margin-top: 16px;
+      font-size: 0.9rem;
+      color: #4f46e5;
+      font-weight: 500;
+      min-height: 20px;
+    }
+
+    .btn {
+      margin-top: 28px;
+      width: 100%;
+      padding: 14px;
+      background: #4f46e5;
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .btn:hover:not(:disabled) { background: #4338ca; }
+    .btn:disabled { background: #a5b4fc; cursor: not-allowed; }
+
+    #status {
+      margin-top: 20px;
+      font-size: 0.92rem;
+      min-height: 24px;
+      color: #374151;
+    }
+
+    #status.error { color: #dc2626; }
+    #status.success { color: #16a34a; }
+
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid #c7d2fe;
+      border-top-color: #4f46e5;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .steps {
+      margin-top: 36px;
+      text-align: left;
+      border-top: 1px solid #e5e7eb;
+      padding-top: 24px;
+    }
+
+    .steps h3 { font-size: 0.85rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; }
+
+    .step {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .step-num {
+      background: #e0e7ff;
+      color: #4f46e5;
+      font-weight: 700;
+      font-size: 0.8rem;
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .step-text { font-size: 0.9rem; color: #374151; padding-top: 3px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>PDF → Excel</h1>
+    <p class="subtitle">Powered by Mistral OCR · Extracts tables &amp; text into structured sheets</p>
+
+    <div class="drop-zone" id="drop-zone">
+      <input type="file" id="pdf-input" accept="application/pdf" />
+      <div class="drop-icon">📄</div>
+      <div class="drop-label">Drop your PDF here</div>
+      <div class="drop-hint">or click to browse · max 50 MB</div>
+    </div>
+
+    <div id="file-name"></div>
+
+    <button class="btn" id="convert-btn" disabled>Convert to Excel</button>
+
+    <div id="status"></div>
+
+    <div class="steps">
+      <h3>How it works</h3>
+      <div class="step"><div class="step-num">1</div><div class="step-text">Upload your PDF (scanned or native)</div></div>
+      <div class="step"><div class="step-num">2</div><div class="step-text">Mistral OCR reads every page, detecting tables and text</div></div>
+      <div class="step"><div class="step-num">3</div><div class="step-text">Download your Excel — one sheet per page</div></div>
+    </div>
+  </div>
+
+  <script>
+    const dropZone = document.getElementById("drop-zone");
+    const fileInput = document.getElementById("pdf-input");
+    const fileNameEl = document.getElementById("file-name");
+    const convertBtn = document.getElementById("convert-btn");
+    const statusEl = document.getElementById("status");
+
+    let selectedFile = null;
+
+    function setFile(file) {
+      if (!file || file.type !== "application/pdf") {
+        statusEl.textContent = "Please select a valid PDF file.";
+        statusEl.className = "error";
+        return;
+      }
+      selectedFile = file;
+      fileNameEl.textContent = `📎 ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
+      convertBtn.disabled = false;
+      statusEl.textContent = "";
+      statusEl.className = "";
+    }
+
+    fileInput.addEventListener("change", () => setFile(fileInput.files[0]));
+
+    dropZone.addEventListener("dragover", (e) => { e.preventDefault(); dropZone.classList.add("dragover"); });
+    dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
+    dropZone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropZone.classList.remove("dragover");
+      setFile(e.dataTransfer.files[0]);
+    });
+
+    convertBtn.addEventListener("click", async () => {
+      if (!selectedFile) return;
+
+      convertBtn.disabled = true;
+      statusEl.innerHTML = '<span class="spinner"></span>Uploading &amp; running OCR… this may take a moment';
+      statusEl.className = "";
+
+      const formData = new FormData();
+      formData.append("pdf", selectedFile);
+
+      try {
+        const resp = await fetch("/convert", { method: "POST", body: formData });
+
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({ error: "Unknown error" }));
+          throw new Error(err.error || `HTTP ${resp.status}`);
+        }
+
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        const disposition = resp.headers.get("Content-Disposition") || "";
+        const match = disposition.match(/filename="?([^"]+)"?/);
+        a.download = match ? match[1] : "output.xlsx";
+        a.href = url;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        statusEl.textContent = "✅ Excel downloaded successfully!";
+        statusEl.className = "success";
+      } catch (err) {
+        statusEl.textContent = `❌ Error: ${err.message}`;
+        statusEl.className = "error";
+      } finally {
+        convertBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
