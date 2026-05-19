@@ -4,3 +4,5 @@ __pycache__/
 uploads/
 *.xlsx
 .DS_Store
+venv/
+*.log
