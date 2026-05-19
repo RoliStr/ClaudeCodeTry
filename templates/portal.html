@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tools Portal</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(135deg, #eef2ff 0%, #f0f4f8 100%);
+      min-height: 100vh;
+      padding: 64px 24px;
+    }
+    .wrap { max-width: 960px; margin: 0 auto; }
+    header { text-align: center; margin-bottom: 56px; }
+    h1 { font-size: 2.4rem; color: #1a1a2e; margin-bottom: 10px; }
+    header p { color: #6b7280; font-size: 1.05rem; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 24px;
+    }
+    .tool-card {
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.07);
+      padding: 32px 28px;
+      text-decoration: none;
+      color: inherit;
+      transition: transform 0.18s, box-shadow 0.18s;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      border: 1px solid transparent;
+    }
+    .tool-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 32px rgba(79,70,229,0.16);
+      border-color: #c7d2fe;
+    }
+    .tool-icon { font-size: 2.6rem; }
+    .tool-name { font-size: 1.25rem; font-weight: 700; color: #1a1a2e; }
+    .tool-desc { color: #6b7280; font-size: 0.93rem; line-height: 1.5; }
+    .tool-cta {
+      margin-top: auto;
+      color: #4f46e5;
+      font-weight: 600;
+      font-size: 0.9rem;
+      padding-top: 8px;
+    }
+    .empty {
+      grid-column: 1 / -1;
+      text-align: center;
+      color: #9ca3af;
+      padding: 60px;
+      background: #fff;
+      border-radius: 16px;
+    }
+    footer { text-align: center; margin-top: 56px; color: #9ca3af; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>🧰 Tools Portal</h1>
+      <p>Choose a tool to get started</p>
+    </header>
+
+    <div class="grid">
+      {% for tool in tools %}
+      <a class="tool-card" href="{{ tool.url }}">
+        <div class="tool-icon">{{ tool.icon }}</div>
+        <div class="tool-name">{{ tool.name }}</div>
+        <div class="tool-desc">{{ tool.description }}</div>
+        <div class="tool-cta">Open →</div>
+      </a>
+      {% else %}
+      <div class="empty">No tools registered yet.</div>
+      {% endfor %}
+    </div>
+
+    <footer>More tools coming soon</footer>
+  </div>
+</body>
+</html>
