@@ -6,11 +6,11 @@ To add a new tool:
   2. Import it below and append (module.TOOL, module.bp) to REGISTRY.
 The portal landing page and route registration pick it up automatically.
 """
-from . import pdf_to_excel
+from . import pdf_converter
 
 # (metadata, blueprint) for every registered tool
 REGISTRY = [
-    (pdf_to_excel.TOOL, pdf_to_excel.bp),
+    (pdf_converter.TOOL, pdf_converter.bp),
 ]
 
 TOOLS = [meta for meta, _bp in REGISTRY]

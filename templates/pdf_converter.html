@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PDF → Excel (Mistral OCR)</title>
+  <title>PDF Converter (Mistral OCR)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -20,7 +20,7 @@
       border-radius: 16px;
       box-shadow: 0 4px 24px rgba(0,0,0,0.10);
       padding: 48px 40px;
-      max-width: 520px;
+      max-width: 560px;
       width: 100%;
       text-align: center;
       position: relative;
@@ -51,13 +51,37 @@
     .drop-label { color: #374151; font-size: 1rem; }
     .drop-hint { color: #9ca3af; font-size: 0.85rem; margin-top: 6px; }
     #file-name { margin-top: 16px; font-size: 0.9rem; color: #4f46e5; font-weight: 500; min-height: 20px; }
-    .btn {
-      margin-top: 28px; width: 100%; padding: 14px;
-      background: #4f46e5; color: #fff; font-size: 1rem; font-weight: 600;
-      border: none; border-radius: 10px; cursor: pointer; transition: background 0.2s;
+
+    .btn-row {
+      margin-top: 24px;
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
     }
-    .btn:hover:not(:disabled) { background: #4338ca; }
-    .btn:disabled { background: #a5b4fc; cursor: not-allowed; }
+    .btn {
+      padding: 14px 10px;
+      color: #fff;
+      font-size: 0.95rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.05s;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+    .btn:active:not(:disabled) { transform: translateY(1px); }
+    .btn .btn-icon { font-size: 1.2rem; }
+    .btn-excel { background: #16a34a; }
+    .btn-excel:hover:not(:disabled) { background: #15803d; }
+    .btn-word { background: #2563eb; }
+    .btn-word:hover:not(:disabled) { background: #1d4ed8; }
+    .btn-ppt { background: #ea580c; }
+    .btn-ppt:hover:not(:disabled) { background: #c2410c; }
+    .btn:disabled { background: #d1d5db; color: #9ca3af; cursor: not-allowed; }
+
     #status { margin-top: 20px; font-size: 0.92rem; min-height: 24px; color: #374151; }
     #status.error { color: #dc2626; }
     #status.success { color: #16a34a; }
@@ -82,8 +106,8 @@
 <body>
   <div class="card">
     <a class="back-link" href="/">← All tools</a>
-    <h1>PDF → Excel</h1>
-    <p class="subtitle">Powered by Mistral OCR · Extracts tables &amp; text into structured sheets</p>
+    <h1>PDF Converter</h1>
+    <p class="subtitle">Powered by Mistral OCR · Convert to Excel, Word, or PowerPoint</p>
 
     <div class="drop-zone" id="drop-zone">
       <input type="file" id="pdf-input" accept="application/pdf" />
@@ -93,14 +117,26 @@
     </div>
 
     <div id="file-name"></div>
-    <button class="btn" id="convert-btn" disabled>Convert to Excel</button>
+
+    <div class="btn-row">
+      <button class="btn btn-excel" data-fmt="excel" disabled>
+        <span class="btn-icon">📊</span><span>Excel</span>
+      </button>
+      <button class="btn btn-word" data-fmt="word" disabled>
+        <span class="btn-icon">📝</span><span>Word</span>
+      </button>
+      <button class="btn btn-ppt" data-fmt="pptx" disabled>
+        <span class="btn-icon">📈</span><span>PowerPoint</span>
+      </button>
+    </div>
+
     <div id="status"></div>
 
     <div class="steps">
       <h3>How it works</h3>
       <div class="step"><div class="step-num">1</div><div class="step-text">Upload your PDF (scanned or native)</div></div>
       <div class="step"><div class="step-num">2</div><div class="step-text">Mistral OCR reads every page, detecting tables and text</div></div>
-      <div class="step"><div class="step-num">3</div><div class="step-text">Download your Excel — one sheet per page</div></div>
+      <div class="step"><div class="step-num">3</div><div class="step-text">Pick a format — your file downloads automatically</div></div>
     </div>
   </div>
 
@@ -108,9 +144,13 @@
     const dropZone = document.getElementById("drop-zone");
     const fileInput = document.getElementById("pdf-input");
     const fileNameEl = document.getElementById("file-name");
-    const convertBtn = document.getElementById("convert-btn");
     const statusEl = document.getElementById("status");
+    const buttons = document.querySelectorAll(".btn[data-fmt]");
     let selectedFile = null;
+
+    function setButtonsDisabled(disabled) {
+      buttons.forEach(b => b.disabled = disabled);
+    }
 
     function setFile(file) {
       if (!file || file.type !== "application/pdf") {
@@ -120,7 +160,7 @@
       }
       selectedFile = file;
       fileNameEl.textContent = `📎 ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
-      convertBtn.disabled = false;
+      setButtonsDisabled(false);
       statusEl.textContent = "";
       statusEl.className = "";
     }
@@ -134,38 +174,43 @@
       setFile(e.dataTransfer.files[0]);
     });
 
-    convertBtn.addEventListener("click", async () => {
-      if (!selectedFile) return;
-      convertBtn.disabled = true;
-      statusEl.innerHTML = '<span class="spinner"></span>Uploading &amp; running OCR… this may take a moment';
-      statusEl.className = "";
+    const formatLabels = { excel: "Excel", word: "Word", pptx: "PowerPoint" };
 
-      const formData = new FormData();
-      formData.append("pdf", selectedFile);
+    buttons.forEach(btn => {
+      btn.addEventListener("click", async () => {
+        if (!selectedFile) return;
+        const fmt = btn.dataset.fmt;
+        setButtonsDisabled(true);
+        statusEl.innerHTML = `<span class="spinner"></span>Running OCR &amp; building ${formatLabels[fmt]}… this may take a moment`;
+        statusEl.className = "";
 
-      try {
-        const resp = await fetch("/tools/pdf-to-excel/convert", { method: "POST", body: formData });
-        if (!resp.ok) {
-          const err = await resp.json().catch(() => ({ error: "Unknown error" }));
-          throw new Error(err.error || `HTTP ${resp.status}`);
+        const formData = new FormData();
+        formData.append("pdf", selectedFile);
+
+        try {
+          const resp = await fetch(`/tools/pdf-converter/convert/${fmt}`, { method: "POST", body: formData });
+          if (!resp.ok) {
+            const err = await resp.json().catch(() => ({ error: "Unknown error" }));
+            throw new Error(err.error || `HTTP ${resp.status}`);
+          }
+          const blob = await resp.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          const disposition = resp.headers.get("Content-Disposition") || "";
+          const match = disposition.match(/filename="?([^"]+)"?/);
+          a.download = match ? match[1] : `output.${fmt === "pptx" ? "pptx" : fmt === "word" ? "docx" : "xlsx"}`;
+          a.href = url;
+          a.click();
+          URL.revokeObjectURL(url);
+          statusEl.textContent = `✅ ${formatLabels[fmt]} file downloaded!`;
+          statusEl.className = "success";
+        } catch (err) {
+          statusEl.textContent = `❌ Error: ${err.message}`;
+          statusEl.className = "error";
+        } finally {
+          setButtonsDisabled(false);
         }
-        const blob = await resp.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        const disposition = resp.headers.get("Content-Disposition") || "";
-        const match = disposition.match(/filename="?([^"]+)"?/);
-        a.download = match ? match[1] : "output.xlsx";
-        a.href = url;
-        a.click();
-        URL.revokeObjectURL(url);
-        statusEl.textContent = "✅ Excel downloaded successfully!";
-        statusEl.className = "success";
-      } catch (err) {
-        statusEl.textContent = `❌ Error: ${err.message}`;
-        statusEl.className = "error";
-      } finally {
-        convertBtn.disabled = false;
-      }
+      });
     });
   </script>
 </body>
