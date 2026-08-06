@@ -1,8 +1,9 @@
 # Pflichtenheft — Ferienhaus-Management-Plattform
 
 **Projekt:** Verwaltungs- und Vermarktungsplattform für Ferienhäuser in Griechenland
-**Dokumentversion:** 1.0 (Entwurf)
+**Dokumentversion:** 1.1 (Entwurf)
 **Stand:** 2026-08-06
+**Änderung gegenüber 1.0:** Kapitel 6.11 „Automatisierte Gästekommunikation" ergänzt (Nachrichtenstrecke per E-Mail und WhatsApp); zugehörige Anpassungen in den Kapiteln 1, 2, 4, 5.5, 7, 8, 9.3, 10, 11, 12, 13 und 14.
 **Auftraggeber:** Roland Strahlhofer
 **Status:** Zur Abstimmung — offene Punkte siehe Kapitel 12
 
@@ -27,6 +28,7 @@ und zur Umgebung werden individuell pro Gast weitergegeben.
 | Z-4 | Gäste vorab und vor Ort informieren | Hausprospekt, Umgebungs- und Notfallinformationen online abrufbar |
 | Z-5 | Griechischsprachige Gäste direkt ansprechen | Vollständige griechische Sprachfassung der Gästeseite |
 | Z-6 | Erweiterbarkeit auf weitere Objekte | Zweites Objekt ohne Datenmodell-Migration anlegbar |
+| Z-7 | Gäste ohne manuellen Aufwand vor, während und nach dem Aufenthalt begleiten | Anteil automatisch versandter Nachrichten je Buchung; Rückgang der Einzelrückfragen zu Anreise, Schlüssel und WLAN |
 
 ### 1.3 Abgrenzung (Nicht-Ziele der Erstversion)
 
@@ -35,6 +37,7 @@ und zur Umgebung werden individuell pro Gast weitergegeben.
 - Keine Anbindung an Buchhaltungssysteme oder die griechische myDATA-Plattform.
 - Keine Smart-Home-/Schließanlagen-Integration.
 - Keine native Mobil-App (die Weboberfläche ist mobil-optimiert).
+- Kein Nachrichten-Posteingang im System: Antworten der Gäste auf E-Mails oder WhatsApp-Nachrichten laufen im gewohnten Postfach bzw. auf dem Telefon des Betreibers auf, nicht in einer eigenen Chatoberfläche (siehe Kapitel 6.11).
 
 ---
 
@@ -55,6 +58,8 @@ Grundlage aller nachfolgenden Anforderungen.
 | E-8 | Medien | **Bilder auf eigenem Server** (automatisch skaliert), **Videos extern gehostet** (YouTube/Vimeo, ungelistet) und eingebettet. |
 | E-9 | Dienstleister | **Kein eigener Login.** Aufgaben werden per E-Mail/Messenger-Link zugestellt; der Status wird vom Betreiber gepflegt. |
 | E-10 | Preise | **Saisonpreise mit Preisrechner** auf der Gästeseite; Ergebnis ist ein unverbindlicher Gesamtpreis. |
+| E-11 | Gästekommunikation | **Terminierte Nachrichtenstrecke** entlang der Buchung (Vorgabe: 14 Tage vor Anreise, 7 Tage vor Anreise, am Anreisetag, 1 Tag vor Abreise, 7 Tage nach Abreise). Zeitpunkte, Inhalte und Kanäle sind frei konfigurierbar. |
+| E-12 | Versandwege | **E-Mail vollautomatisch.** WhatsApp zunächst **halbautomatisch** (System erzeugt fertige Nachricht und Sendelink, Betreiber löst mit einem Tippen aus). Vollautomatisches WhatsApp über die WhatsApp Business Cloud API ist als spätere Ausbaustufe vorgesehen und im System vorbereitet — Entscheidung offen (O-16). |
 
 ---
 
@@ -85,11 +90,21 @@ Grundlage aller nachfolgenden Anforderungen.
    │  Externe Portale   │◄──►│   Applikation        │───►│  E-Mail-Versand  │
    │  Booking.com       │iCal│   Next.js + API      │    │  (Transaktions-  │
    │  Airbnb, weitere   │    │   PostgreSQL         │    │   dienst)        │
-   └────────────────────┘    └──────────┬───────────┘    └──────────────────┘
+   └────────────────────┘    │                      │    └──────────────────┘
+                             │   ┌────────────────┐ │    ┌──────────────────┐
+                             │   │ Zeitsteuerung  │ ├───►│  WhatsApp        │
+                             │   │ (Scheduler):   │ │    │  Sendelink bzw.  │
+                             │   │ Kanal-Sync,    │ │    │  Business API    │
+                             │   │ Nachrichten-   │ │    └──────────────────┘
+                             │   │ strecke,       │ │
+                             │   │ Aufgaben       │ │
+                             │   └────────────────┘ │
+                             └──────────┬───────────┘
                                         │
                      ┌──────────────────┴───────────────────────┐
                      │  Internes Management (Login)             │
                      │  Belegung · Anfragen · Preise · Aufgaben │
+                     │  Nachrichtenplan · Sendungsvorschau      │
                      │  POI-Moderation · Inhalte · Medien       │
                      └──────────────────────────────────────────┘
 ```
@@ -103,6 +118,7 @@ Grundlage aller nachfolgenden Anforderungen.
 | Internationalisierung | `next-intl` mit Locale-Routing (`/de`, `/el`, `/en`, `/it`, `/fr`) | Statische UI-Texte aus Sprachdateien, Inhaltstexte aus der Datenbank |
 | Authentifizierung | Auth.js (Credentials + TOTP) | Nur interner Bereich, geringe Nutzerzahl |
 | Bildverarbeitung | `sharp`, Ausspielung über `next/image` | Automatische Skalierung, WebP/AVIF |
+| Zeitsteuerung | Persistente Auftragswarteschlange in der Datenbank, ausgelöst durch einen minütlichen Taktgeber | Nachrichtenversand und Kanal-Sync überstehen Neustarts; jeder Versand ist nachvollziehbar und einmalig |
 | Karte | Adapter-Schnittstelle, Implementierung Leaflet **oder** Google Maps JS API | Anbieterwechsel ohne Änderung der Fachlogik (E-7) |
 | Betrieb | Docker-Container hinter Caddy (Reverse Proxy, automatisches HTTPS) auf Lightsail | Entspricht der bestehenden Serverumgebung des Auftraggebers |
 
@@ -182,7 +198,10 @@ Priorisierung: **MUSS** = Phase 1, **SOLL** = Phase 2, **KANN** = Phase 3 oder o
 | FA-G-43 | Alle Öffnungszeitangaben tragen den Hinweis, dass Angaben ohne Gewähr sind. | MUSS |
 | FA-G-44 | Häufige Fragen (FAQ) sind als eigene Seite mit Kategorien pflegbar. | SOLL |
 | FA-G-45 | Bestätigten Gästen kann ein personalisierter Aufenthaltslink zugesandt werden, der zusätzlich zeitraumbezogene Informationen enthält (Zugangscode, Schlüsselübergabe, konkrete Anreisezeiten, Kontakt vor Ort). Der Link ist nicht erratbar und läuft nach Abreise ab. | SOLL |
-| FA-G-46 | Nach der Abreise kann automatisiert eine Bitte um Bewertung mit Links zu den Portalen versandt werden. | KANN |
+| FA-G-46 | Nach der Abreise kann automatisiert eine Bitte um Bewertung mit Links zu den Portalen versandt werden (Teil der Nachrichtenstrecke, Kapitel 6.11). | SOLL |
+| FA-G-47 | Im Anfrageformular kann der Gast seine bevorzugte Kontaktart (E-Mail, WhatsApp) und seine WhatsApp-Nummer angeben; die Angabe ist freiwillig. | SOLL |
+| FA-G-48 | Jede automatisch versandte Nachricht enthält einen Abmeldelink, über den der Gast weitere Nachrichten der Strecke abbestellen kann, ohne dass buchungsrelevante Mitteilungen entfallen. | SOLL |
+| FA-G-49 | Über den Abmeldelink erreicht der Gast eine Seite, auf der er seine Kontaktpräferenzen ändern oder allen weiteren Nachrichten widersprechen kann. | SOLL |
 
 ### 5.6 Sprachen und Barrierefreiheit
 
@@ -310,6 +329,75 @@ Priorisierung: **MUSS** = Phase 1, **SOLL** = Phase 2, **KANN** = Phase 3 oder o
 | FA-I-101 | Der Betreiber erhält eine Tagesübersicht per E-Mail (konfigurierbar an/aus) mit den Ereignissen des Folgetages. | SOLL |
 | FA-I-102 | Auswertungen zu Auslastung, Umsatz je Kanal, Anfrage-Konversionsrate, Betriebskosten je Aufenthalt sind als Jahresvergleich abrufbar und exportierbar (CSV). | KANN |
 
+### 6.11 Automatisierte Gästekommunikation (Nachrichtenstrecke)
+
+Ziel ist es, jeden Gast ohne manuellen Aufwand entlang seines Aufenthalts mit den
+jeweils passenden Informationen zu versorgen. Die Strecke besteht aus mehreren
+Nachrichtenregeln, die sich an den Daten einer Buchung ausrichten.
+
+#### 6.11.1 Vorkonfigurierte Nachrichtenstrecke
+
+Die folgende Strecke wird als Standard ausgeliefert und ist vollständig änderbar.
+Alle Zeitpunkte beziehen sich auf die Ortszeit des Objekts.
+
+| Nr. | Auslöser | Zeitpunkt | Zweck / typischer Inhalt |
+|---|---|---|---|
+| M-1 | Anreise | 14 Tage davor | Vorfreude und Reisevorbereitung: Anreisebeschreibung, Flughafen und Fährverbindungen, Mietwagenempfehlung, Gepäckhinweise, Link zur Umgebungskarte, Bitte um Angabe der voraussichtlichen Ankunftszeit |
+| M-2 | Anreise | 7 Tage davor | Konkrete Vorbereitung: Wetter- und Kleidungshinweis, Einkaufsmöglichkeiten und deren Öffnungszeiten, Restaurantempfehlungen mit Reservierungshinweis, Ausflugstipps, Rückfrage zu Sonderwünschen (Kinderbett, früher Check-in) |
+| M-3 | Anreise | am Anreisetag, morgens | Ankunft: Adresse und Koordinaten, Schlüsselübergabe bzw. Zugangscode, Check-in-Zeit, WLAN-Zugang, Kontakt vor Ort, Notfallnummern, Hausordnung in Kurzform |
+| M-4 | Abreise | 1 Tag davor | Abreise: Check-out-Zeit, Schlüsselrückgabe, Müll und Recycling, Zustand der Küche, Kaution und Rückerstattung, Angebot eines späten Check-outs |
+| M-5 | Abreise | 7 Tage danach | Nachbereitung: Dank, Bitte um Bewertung mit Direktlink zum jeweiligen Portal, Hinweis auf Fundsachen, Angebot für eine Direktbuchung im Folgejahr |
+
+Weitere Regeln sind jederzeit ergänzbar, etwa eine Begrüßung am zweiten Aufenthaltstag
+oder eine Erinnerung an die Zahlung einer Restsumme.
+
+#### 6.11.2 Funktionale Anforderungen
+
+| ID | Anforderung | Prio |
+|---|---|---|
+| FA-I-110 | Der Betreiber verwaltet Nachrichtenregeln mit: Bezeichnung, Bezugspunkt (*Anreise*, *Abreise*, *Buchungsbestätigung*, *Anfrageeingang*), Versatz in Tagen (davor/danach), Versandzeit als Ortszeit des Objekts, Kanal (*E-Mail*, *WhatsApp*, *beide*), Vorlage, Aktivierungsschalter. | MUSS-P2 |
+| FA-I-111 | Nachrichtenregeln können an Bedingungen geknüpft werden: Buchungsstatus, Herkunftskanal, Mindest-/Höchstaufenthaltsdauer, Vorhandensein bestimmter Kontaktdaten, Sprache des Gastes, Objekt. | MUSS-P2 |
+| FA-I-112 | Zu jeder Regel existiert eine Vorlage je unterstützter Sprache. Der Versand erfolgt in der beim Gast hinterlegten Sprache; fehlt diese Fassung, greift eine festgelegte Fallback-Sprache. | MUSS-P2 |
+| FA-I-113 | Vorlagen unterstützen Platzhalter, die beim Versand ersetzt werden: Gastname, Anreise- und Abreisedatum, Anzahl Nächte, Personenzahl, Objektname, Adresse und Koordinaten, Check-in-/Check-out-Zeit, WLAN-Zugang, Zugangscode, Restbetrag, Link zur Gästeseite, Link zum persönlichen Aufenthaltsbereich, Abmeldelink. | MUSS-P2 |
+| FA-I-114 | Beim Speichern einer Vorlage wird geprüft, ob alle verwendeten Platzhalter bekannt sind; unbekannte Platzhalter werden als Fehler gemeldet und verhindern das Speichern. | MUSS-P2 |
+| FA-I-115 | Eine Vorschau zeigt die fertige Nachricht mit den Daten einer wählbaren realen oder fiktiven Buchung, je Sprache und Kanal. | MUSS-P2 |
+| FA-I-116 | Testnachrichten können an eine frei wählbare eigene Adresse bzw. Nummer gesendet werden, ohne den Gast zu erreichen. | MUSS-P2 |
+| FA-I-117 | Sobald eine Buchung den Status *bestätigt* erreicht, erzeugt das System für alle zutreffenden Regeln geplante Sendungen mit berechnetem Versandzeitpunkt. | MUSS-P2 |
+| FA-I-118 | Eine Übersicht „geplante Sendungen" zeigt alle anstehenden Nachrichten mit Empfänger, Zeitpunkt, Kanal, Regel und Vorschau. Einzelne Sendungen können vorgezogen, verschoben, bearbeitet, übersprungen oder sofort ausgelöst werden. | MUSS-P2 |
+| FA-I-119 | Ändert sich der Zeitraum einer Buchung, werden alle noch nicht versandten Sendungen automatisch neu terminiert. Bereits versandte Nachrichten bleiben unverändert protokolliert. | MUSS-P2 |
+| FA-I-120 | Wird eine Buchung storniert, werden alle offenen Sendungen dieser Buchung abgebrochen und als *entfallen* gekennzeichnet. | MUSS-P2 |
+| FA-I-121 | Liegt ein berechneter Versandzeitpunkt bereits in der Vergangenheit (z. B. bei einer Buchung zehn Tage vor Anreise), wird die betreffende Nachricht nicht nachträglich versandt, sondern übersprungen und in der Übersicht als *nicht mehr relevant* ausgewiesen. Der Betreiber kann sie bei Bedarf manuell auslösen. | MUSS-P2 |
+| FA-I-122 | Jede Sendung wird höchstens einmal versandt. Neustarts, Mehrfachläufe des Taktgebers oder parallele Prozesse dürfen keinen Doppelversand auslösen. | MUSS-P2 |
+| FA-I-123 | Es gelten konfigurierbare Ruhezeiten (Vorgabe: kein Versand zwischen 21:00 und 08:00 Ortszeit). Fällt ein Versandzeitpunkt in die Ruhezeit, wird auf den nächsten zulässigen Zeitpunkt verschoben. | MUSS-P2 |
+| FA-I-124 | Ein globaler Betriebsmodus ist wählbar: *automatisch* (Versand ohne Zutun) oder *mit Freigabe* (jede Sendung erscheint zur Bestätigung und geht erst nach Freigabe raus). Zusätzlich existiert ein Notaus, der jeden automatischen Versand sofort anhält. | MUSS-P2 |
+| FA-I-125 | Für den Kanal WhatsApp im halbautomatischen Betrieb (E-12) erzeugt das System die fertige Nachricht und stellt sie mit einem Sendelink (`wa.me` mit vorbelegtem Text) sowie einer Kopierfunktion bereit. Fällige WhatsApp-Nachrichten werden dem Betreiber als Sammelerinnerung zugestellt und im Dashboard angezeigt. Nach dem Versand bestätigt der Betreiber die Sendung mit einem Klick. | MUSS-P2 |
+| FA-I-126 | Der Kanal WhatsApp ist so gekapselt, dass ein späterer Wechsel auf die WhatsApp Business Cloud API ohne Änderung der Regeln und Vorlagen möglich ist. Die für genehmigungspflichtige Nachrichtenvorlagen nötigen Angaben (Vorlagenname, Kategorie, Parameterliste) werden im Datenmodell vorgehalten. | MUSS-P2 |
+| FA-I-127 | Bei vollautomatischem WhatsApp-Betrieb versendet das System ausschließlich zuvor genehmigte Vorlagen, protokolliert den Zustellstatus (gesendet, zugestellt, gelesen, fehlgeschlagen) und weicht bei dauerhaftem Fehlschlag automatisch auf E-Mail aus. | KANN |
+| FA-I-128 | Fehlen die für einen Kanal nötigen Kontaktdaten (keine E-Mail-Adresse bzw. keine Telefonnummer), wird die Sendung nicht stillschweigend verworfen, sondern als *nicht zustellbar* mit Begründung angezeigt; der Betreiber wird darauf hingewiesen. | MUSS-P2 |
+| FA-I-129 | Buchungen aus Portalimporten enthalten in der Regel keine Kontaktdaten (siehe FA-I-49). Das System weist bei solchen Buchungen deutlich darauf hin, dass die Nachrichtenstrecke erst nach manueller Ergänzung von E-Mail-Adresse oder Telefonnummer greift. | MUSS-P2 |
+| FA-I-130 | Ein Sendeprotokoll führt je Nachricht: Zeitpunkt, Empfänger, Kanal, Regel, verwendete Sprache, versandter Inhalt im Wortlaut, Zustellstatus und etwaige Fehlermeldung. Das Protokoll ist an der Buchung und am Gast einsehbar. | MUSS-P2 |
+| FA-I-131 | Nicht zustellbare E-Mails (Bounces) und Beschwerden werden erfasst; die betroffene Adresse wird für weitere automatische Nachrichten gesperrt und dem Betreiber gemeldet. | SOLL |
+| FA-I-132 | Ein Widerspruch des Gastes (Abmeldelink, FA-G-48) unterbindet alle weiteren Nachrichten der Strecke für diese Person. Unmittelbar buchungsbezogene Mitteilungen wie eine Anfragebestätigung oder eine Terminänderung bleiben davon unberührt. | MUSS-P2 |
+| FA-I-133 | Der Betreiber kann eine Nachricht aus einer Vorlage jederzeit ad hoc an einen einzelnen Gast senden, unabhängig von der Strecke. | SOLL |
+| FA-I-134 | Auf dem Dashboard erscheinen die in den nächsten 24 Stunden fälligen Sendungen sowie alle fehlgeschlagenen Sendungen. | MUSS-P2 |
+| FA-I-135 | Bleibt der Versand über eine konfigurierbare Frist gestört (Ausfall des Versanddienstes, wiederholte Fehler), wird der Betreiber gesondert benachrichtigt. | MUSS-P2 |
+| FA-I-136 | Nachrichten können Anhänge in Form von Links auf Inhaltsseiten oder Dokumente enthalten. Dateianhänge im engeren Sinn sind nicht vorgesehen, um Zustellbarkeitsprobleme zu vermeiden. | SOLL |
+| FA-I-137 | Eine Auswertung zeigt je Regel die Anzahl versandter Nachrichten, die Zustellquote und — sofern messbar — die Öffnungs- und Klickrate. | KANN |
+
+*Prio-Kennzeichnung:* **MUSS-P2** bezeichnet Anforderungen, die für die Nachrichtenstrecke
+zwingend sind, deren Umsetzung aber nach Phase 1 erfolgt (siehe Kapitel 10).
+
+#### 6.11.3 Rahmenbedingungen für den WhatsApp-Versand
+
+Diese Punkte sind keine Anforderungen, sondern Randbedingungen, die die Gestaltung
+des Kanals bestimmen und bei der Entscheidung zu O-16 zu berücksichtigen sind.
+
+- Automatisierter WhatsApp-Versand an Personen setzt die **WhatsApp Business Platform (Cloud API)** voraus. Dafür sind ein verifiziertes Meta-Unternehmenskonto, eine dedizierte Telefonnummer und die Nutzung über einen Anbieter oder direkt bei Meta erforderlich.
+- Nachrichten, die außerhalb eines laufenden Gesprächs versandt werden — und das ist bei einer terminierten Strecke immer der Fall — müssen **vorab genehmigte Vorlagen** verwenden. Freier Text ist nur innerhalb eines vom Gast eröffneten Gesprächsfensters zulässig. Genehmigungen können abgelehnt werden und benötigen Vorlauf.
+- Der Versand ist **kostenpflichtig**, abgerechnet je Gespräch bzw. Nachricht und abhängig vom Land des Empfängers.
+- Es ist eine **nachweisbare Einwilligung** des Gastes erforderlich, über WhatsApp kontaktiert zu werden.
+- Die halbautomatische Variante (E-12, FA-I-125) unterliegt keiner dieser Einschränkungen, da der Betreiber die Nachricht selbst aus seinem privaten oder geschäftlichen WhatsApp-Konto versendet. Sie kostet pro Buchung wenige Sekunden manuellen Aufwand.
+
 ---
 
 ## 7. Datenmodell (fachlich)
@@ -325,7 +413,7 @@ Die folgende Übersicht beschreibt die fachlichen Entitäten. Technische Attribu
 | **Buchung** | Anreise, Abreise, Status, Herkunft, Personenzahl, Kinder/Alter, Haustiere, Gesamtpreis, Anzahlung, Notiz, externe UID | n:1 Objekt, n:1 Kanal, n:1 Gast |
 | **Sperrung** | Zeitraum, Grund, Notiz | n:1 Objekt |
 | **Anfrage** | Zeitraum, Personen, Kontaktangaben, Sprache, Nachricht, errechneter Richtpreis, Status, Zustimmungsnachweis | n:1 Objekt, 0:1 Buchung |
-| **Gast** | Name, E-Mail, Telefon, Land, Sprache, Notiz | 1:n Buchungen/Anfragen |
+| **Gast** | Name, E-Mail, Telefon, WhatsApp-Nummer, bevorzugter Kanal, Land, Sprache, Einwilligungen je Kanal mit Zeitstempel und Herkunft, Widerspruchskennzeichen, Sperrkennzeichen (Bounce/Beschwerde), Notiz | 1:n Buchungen/Anfragen, 1:n Sendungen |
 | **Saison** | Bezeichnung, Zeitraum, Nächtepreis, Mindestaufenthalt, Anreiseregel | n:1 Objekt |
 | **Tagespreis-Ausnahme** | Datum, Preis, Mindestaufenthalt | n:1 Objekt |
 | **Entgelt** | Typ (Pauschale/pro Nacht/pro Person/pro Aufenthalt), Betrag, Bedingung, steuerliche Kennzeichnung | n:1 Objekt |
@@ -339,7 +427,10 @@ Die folgende Übersicht beschreibt die fachlichen Entitäten. Technische Attribu
 | **Inhaltsseite** | Schlüssel, Titel und Text je Sprache, Typ, Veröffentlichungsstatus | n:1 Objekt |
 | **Medium** | Typ (Bild/Video), Datei bzw. externe URL, Alternativtext je Sprache, Kategorie, Sortierung | n:1 Objekt |
 | **Benutzer** | Name, E-Mail, Rolle, Passwort-Hash, TOTP-Geheimnis, Status | — |
-| **Nachrichtenprotokoll** | Empfänger, Betreff, Zeitpunkt, Vorlage, Zustellstatus | n:1 Anfrage/Buchung/Aufgabe |
+| **Nachrichtenregel** | Bezeichnung, Bezugspunkt, Versatz in Tagen, Versandzeit, Kanal, Bedingungen, aktiv/inaktiv, Sortierung | n:1 Objekt, 1:n Vorlagen, 1:n Sendungen |
+| **Nachrichtenvorlage** | Sprache, Betreff, Inhalt, verwendete Platzhalter, Kanal, Status; bei WhatsApp zusätzlich Vorlagenname, Kategorie und Parameterliste des Anbieters | n:1 Nachrichtenregel |
+| **Geplante Sendung** | Soll-Versandzeitpunkt, Kanal, Empfängeradresse bzw. -nummer, Sprache, Status (*geplant*, *freizugeben*, *versandt*, *fehlgeschlagen*, *übersprungen*, *entfallen*, *nicht zustellbar*), Versuchszähler, erzeugter Inhalt, Sperrschlüssel gegen Doppelversand | n:1 Nachrichtenregel, n:1 Buchung, n:1 Gast |
+| **Nachrichtenprotokoll** | Empfänger, Kanal, Betreff, Zeitpunkt, Vorlage, versandter Inhalt im Wortlaut, Zustellstatus, Fehlermeldung, Auslöser (automatisch/manuell) | n:1 Anfrage/Buchung/Aufgabe/Sendung |
 | **Änderungsprotokoll** | Benutzer, Zeitpunkt, Entität, Aktion, Vorher/Nachher | — |
 
 ---
@@ -350,7 +441,9 @@ Die folgende Übersicht beschreibt die fachlichen Entitäten. Technische Attribu
 |---|---|---|---|---|
 | S-1 | iCal-Import (Booking.com, Airbnb, weitere) | eingehend | Belegungszeiträume übernehmen | Portalseitige Aktualisierung typischerweise nicht in Echtzeit; Restrisiko dokumentiert (FA-I-49) |
 | S-2 | iCal-Export | ausgehend | Gesamtbelegung an Portale melden | Tokengeschützte URL, keine personenbezogenen Daten |
-| S-3 | E-Mail-Versand (SMTP oder Transaktionsdienst) | ausgehend | Bestätigungen, Benachrichtigungen, Aufgabenversand | SPF/DKIM/DMARC einzurichten |
+| S-3 | E-Mail-Versand (SMTP oder Transaktionsdienst) | ausgehend | Bestätigungen, Benachrichtigungen, Aufgabenversand, Nachrichtenstrecke | SPF/DKIM/DMARC einzurichten; Rückmeldungen zu Zustellung und Bounces werden ausgewertet (FA-I-131) |
+| S-3a | WhatsApp-Sendelink (`wa.me`) | ausgehend | Halbautomatischer Versand der Nachrichtenstrecke und von Aufgaben | Kein Vertrag, keine Kosten; Versand erfolgt durch den Betreiber (E-12) |
+| S-3b | WhatsApp Business Cloud API | ein-/ausgehend | Vollautomatischer Versand, Zustellstatus | Spätere Ausbaustufe; setzt Unternehmensverifizierung, genehmigte Vorlagen und Einwilligung voraus (Kapitel 6.11.3) |
 | S-4 | Kartendienst | ein-/ausgehend | Kartendarstellung, Adress-/Koordinatensuche | Über Adapter gekapselt (E-7) |
 | S-5 | Videoplattform (YouTube/Vimeo) | ausgehend | Einbettung von Videos | Nur nach Einwilligung (FA-G-06) |
 | S-6 | Google-Maps-Deeplink | ausgehend | Navigation zu POI | Reiner Link, keine Datenübertragung ohne Klick |
@@ -390,11 +483,13 @@ Die folgende Übersicht beschreibt die fachlichen Entitäten. Technische Attribu
 | NFA-20 | Verarbeitung nach DSGVO: Datenschutzerklärung in allen Sprachen, Rechtsgrundlagen je Verarbeitung dokumentiert, Verzeichnis von Verarbeitungstätigkeiten. |
 | NFA-21 | Cookie-/Einwilligungsbanner mit granularer Auswahl; nicht notwendige Dienste (Karte eines externen Anbieters, Videoeinbettung, Statistik) laden erst nach Einwilligung. |
 | NFA-22 | Auskunfts-, Berichtigungs- und Löschanträge sind mit vertretbarem Aufwand erfüllbar; Gastdaten sind exportierbar und löschbar. |
-| NFA-23 | Löschfristen sind konfigurierbar: nicht weiterverfolgte Anfragen werden nach einer festgelegten Frist automatisch anonymisiert; Buchungsdaten bleiben so lange erhalten, wie steuerliche Aufbewahrungspflichten es verlangen. |
+| NFA-23 | Löschfristen sind konfigurierbar: nicht weiterverfolgte Anfragen werden nach einer festgelegten Frist automatisch anonymisiert; Buchungsdaten bleiben so lange erhalten, wie steuerliche Aufbewahrungspflichten es verlangen. Sendungsprotokolle der Nachrichtenstrecke unterliegen der Frist der zugehörigen Buchung; nach Ablauf werden die Empfängerangaben anonymisiert, während die statistischen Kennzahlen erhalten bleiben. |
 | NFA-24 | Impressum und Datenschutzerklärung sind von jeder Seite aus erreichbar. |
 | NFA-25 | Die griechische Registriernummer (AMA) und weitere gesetzlich vorgeschriebene Angaben zur Kurzzeitvermietung werden auf der Gästeseite ausgewiesen. |
 | NFA-26 | Anwendbare Melde- und Datenübermittlungspflichten für Kurzzeitvermietung (nationale Registrierung sowie einschlägige EU-Vorgaben zur Datenerhebung bei kurzfristiger Vermietung) sind vor Inbetriebnahme mit einem Steuer-/Rechtsberater in Griechenland zu prüfen; das System hält die dafür nötigen Datenfelder vor. |
 | NFA-27 | Nutzergenerierte Inhalte (POI-Vorschläge) werden vor Veröffentlichung geprüft (FA-G-36), um Haftungsrisiken zu begrenzen. |
+| NFA-28 | Nachrichten der Strecke, die der Durchführung des Aufenthalts dienen (M-1 bis M-4), stützen sich auf die Vertragserfüllung. Die Nachbereitungsnachricht mit Bewertungsbitte und Wiederbuchungsangebot (M-5) hat werblichen Charakter; ihre Rechtsgrundlage sowie die Zulässigkeit ohne gesonderte Einwilligung sind vor Inbetriebnahme zu prüfen (O-20). Jede Nachricht der Strecke enthält einen Abmeldelink (FA-G-48). |
+| NFA-29 | Die Einwilligung zur Kontaktaufnahme über WhatsApp wird gesondert, nachweisbar und mit Zeitstempel erfasst; ohne sie erfolgt kein WhatsApp-Versand. |
 
 ### 9.4 Betrieb und Wartbarkeit
 
@@ -436,6 +531,7 @@ Die folgende Übersicht beschreibt die fachlichen Entitäten. Technische Attribu
 
 ### Phase 2 — Betriebsunterstützung
 
+- **Nachrichtenstrecke (Kapitel 6.11):** Zeitsteuerung, Nachrichtenregeln, mehrsprachige Vorlagen mit Platzhaltern, geplante Sendungen mit Vorschau und Eingriffsmöglichkeit, Sendeprotokoll, Ruhezeiten, Freigabemodus und Notaus, Abmeldelink und Einwilligungsverwaltung — vollautomatisch per E-Mail, halbautomatisch per WhatsApp-Sendelink
 - Dienstleisterverwaltung, Aufgaben, automatische Aufgabenerzeugung aus Buchungen
 - Wiederkehrende Aufgaben, Aufgabenkalender, Aufgabenversand per E-Mail/Messenger-Link
 - Mängel- und Schadensregister
@@ -451,8 +547,15 @@ Die folgende Übersicht beschreibt die fachlichen Entitäten. Technische Attribu
 - Inventar- und Verbrauchsmaterialverwaltung, Fristenliste
 - Mehrobjekt-Oberfläche mit Objektumschalter
 - Bewertungen und Kommentare zu POI mit Freigabe
-- Bewertungsanfrage nach Abreise, PDF-Prospektexport
+- PDF-Prospektexport
+- Vollautomatischer WhatsApp-Versand über die Business Cloud API inklusive Zustellstatus und Ausweichen auf E-Mail (FA-I-127), Auswertung der Nachrichtenstrecke (FA-I-137)
 - Optional: Anzahlung per Zahlungslink (setzt Klärung von Steuer- und Rechtsfragen voraus)
+
+> **Hinweis zur Priorisierung:** Die Nachrichtenstrecke setzt technisch nur Buchungsdaten,
+> Vorlagen und E-Mail-Versand voraus — alles Bestandteile von Phase 1. Sie lässt sich daher
+> auf Wunsch ganz oder teilweise (etwa nur die Anreisenachricht M-3) in Phase 1 vorziehen.
+> Empfohlen wird, mit M-3 und M-4 zu beginnen, da diese den größten Teil der wiederkehrenden
+> Rückfragen abfangen.
 
 ---
 
@@ -470,6 +573,19 @@ Die folgende Übersicht beschreibt die fachlichen Entitäten. Technische Attribu
 | AK-8 | Eine Wiederherstellung aus dem Backup wurde erfolgreich durchgeführt und protokolliert. |
 | AK-9 | Ein Zugänglichkeitstest (automatisiert und stichprobenartig manuell) weist keine Verstöße gegen WCAG 2.2 AA auf den Hauptseiten aus. |
 | AK-10 | Eine Doppelbelegung durch zwei Kanäle wird als Konflikt erkannt, angezeigt und gemeldet. |
+
+### Abnahmekriterien Nachrichtenstrecke (Phase 2)
+
+| Nr. | Kriterium |
+|---|---|
+| AK-11 | Für eine neu bestätigte Testbuchung werden alle fünf Sendungen der Standardstrecke mit korrekt berechneten Zeitpunkten in Ortszeit des Objekts erzeugt und in der Übersicht angezeigt. |
+| AK-12 | Eine Verschiebung des Buchungszeitraums terminiert alle offenen Sendungen neu; eine Stornierung bricht sie ab. Bereits versandte Nachrichten bleiben unverändert protokolliert. |
+| AK-13 | Eine Testbuchung mit griechischer Gastsprache erhält alle Nachrichten auf Griechisch mit korrekt ersetzten Platzhaltern; fehlt eine Sprachfassung, greift nachweislich die Fallback-Sprache. |
+| AK-14 | Ein wiederholt ausgelöster Versandlauf sowie ein Neustart der Anwendung während eines Laufs führen zu keiner doppelt versandten Nachricht. |
+| AK-15 | Eine auf 22:00 Uhr fallende Sendung wird gemäß Ruhezeitregel auf den nächsten zulässigen Zeitpunkt verschoben. |
+| AK-16 | Ein Klick auf den Abmeldelink unterbindet alle weiteren Nachrichten der Strecke für diesen Gast; eine anschließend ausgelöste Terminänderungsmitteilung erreicht ihn dennoch. |
+| AK-17 | Eine über iCal importierte Buchung ohne Kontaktdaten erzeugt keine stillschweigend verworfenen Sendungen, sondern einen sichtbaren Hinweis auf fehlende Kontaktdaten. |
+| AK-18 | Eine fällige WhatsApp-Nachricht erscheint mit fertigem Text und funktionierendem Sendelink; nach dem Versand lässt sie sich als erledigt bestätigen und ist im Protokoll nachvollziehbar. |
 
 ---
 
@@ -492,6 +608,12 @@ Die folgende Übersicht beschreibt die fachlichen Entitäten. Technische Attribu
 | O-13 | Gibt es ein Zieldatum, etwa den Start der Saison, an dem Phase 1 produktiv sein muss? | Zeitplan, Priorisierung |
 | O-14 | Soll ein zweiter Benutzer (Rolle Manager) von Beginn an eingerichtet werden? | Rechteverwaltung |
 | O-15 | Wie hoch ist das Budget für laufende Dienste (Karten-API, E-Mail-Versand, Bot-Schutz, Hosting)? Davon hängt die Entscheidung aus E-7 ab. | Anbieterwahl |
+| O-16 | Soll WhatsApp halbautomatisch bleiben (Sendelink, kostenfrei, wenige Sekunden Aufwand je Nachricht) oder über die Business Cloud API vollautomatisch laufen (Unternehmensverifizierung, genehmigte Vorlagen, Kosten je Gespräch)? | Kanalumsetzung, Kosten, Aufwand |
+| O-17 | Welche Absenderidentität soll für WhatsApp genutzt werden — die private Nummer, eine separate Nummer für die Vermietung? Bei der Cloud API wird eine eigene, nicht anderweitig in WhatsApp genutzte Nummer benötigt. | Einrichtung, Erreichbarkeit |
+| O-18 | Sind die vorgeschlagenen Zeitpunkte der Standardstrecke (14 Tage, 7 Tage, Anreisetag, 1 Tag vor Abreise, 7 Tage nach Abreise) so gewünscht, und zu welcher Uhrzeit sollen die Nachrichten versandt werden? | Konfiguration der Regeln |
+| O-19 | Welche Inhalte sollen die fünf Nachrichten konkret enthalten — insbesondere, ob Zugangscode und WLAN-Zugang per Nachricht versandt werden dürfen oder nur über den persönlichen Aufenthaltslink? | Vorlagen, Sicherheit |
+| O-20 | Darf die Nachbereitungsnachricht (M-5) mit Bewertungsbitte und Wiederbuchungsangebot ohne gesonderte Einwilligung versandt werden? Dies ist werbliche Kommunikation und mit dem Rechtsberater zu klären (NFA-28). | Rechtskonformität |
+| O-21 | Sollen Gäste aus Portalbuchungen in die Strecke einbezogen werden? Das setzt voraus, dass Kontaktdaten manuell nachgetragen werden, und die Nutzungsbedingungen der Portale zur Direktkontaktaufnahme sind zu beachten. | Reichweite der Strecke, Portalregeln |
 
 ---
 
@@ -506,6 +628,10 @@ Die folgende Übersicht beschreibt die fachlichen Entitäten. Technische Attribu
 | R-5 | Betriebskosten externer Dienste steigen unerwartet | gering / mittel | Kartenanbieter über Adapter austauschbar, kostenlose Alternative verfügbar |
 | R-6 | Ressourcengrenzen der kleinen Serverinstanz | mittel / mittel | Videos extern, Bilder vorskaliert, Zwischenspeicherung von Kalender- und Preisabfragen, Überwachung |
 | R-7 | Datenverlust | gering / hoch | Tägliche Backups, erprobte Wiederherstellung (NFA-30, AK-8) |
+| R-8 | Fehlerhafte oder doppelte Nachrichten erreichen Gäste und wirken unprofessionell | mittel / mittel | Vorschau und Testversand vor Aktivierung, Freigabemodus für den Anlauf, Einmaligkeitssicherung (FA-I-122), Notaus (FA-I-124) |
+| R-9 | Portalbuchungen tragen keine Kontaktdaten, die Strecke greift dort nicht | hoch / mittel | Sichtbarer Hinweis an der Buchung (FA-I-129), manuelles Nachtragen, Fokus der Strecke auf Direktbuchungen — was zugleich Ziel Z-2 unterstützt |
+| R-10 | WhatsApp-Vorlagen werden nicht genehmigt oder Kosten und Auflagen der Cloud API stehen in keinem Verhältnis zum Nutzen | mittel / gering | Halbautomatischer Betrieb als vollwertiger Ausgangszustand (E-12); Kanal gekapselt, Wechsel jederzeit ohne Änderung von Regeln und Vorlagen möglich (FA-I-126) |
+| R-11 | Automatische Nachrichten werden als Werbung eingestuft oder landen im Spam-Ordner | mittel / mittel | SPF/DKIM/DMARC, Abmeldelink in jeder Nachricht, Bounce- und Beschwerdeauswertung (FA-I-131), rechtliche Klärung der werblichen Nachricht (O-20) |
 
 ---
 
@@ -521,3 +647,10 @@ Die folgende Übersicht beschreibt die fachlichen Entitäten. Technische Attribu
 | **MVP** | Minimum Viable Product — kleinster produktiv nutzbarer Funktionsumfang |
 | **WCAG 2.2 AA** | Internationale Richtlinie für barrierefreie Webinhalte, Konformitätsstufe AA |
 | **TOTP** | Zeitbasiertes Einmalpasswort als zweiter Anmeldefaktor |
+| **Nachrichtenstrecke** | Folge automatisch terminierter Nachrichten, die sich an den Daten einer Buchung ausrichtet (Kapitel 6.11) |
+| **Nachrichtenregel** | Vorschrift, wann und über welchen Kanal eine bestimmte Nachricht einer Strecke versandt wird |
+| **Geplante Sendung** | Konkrete, aus einer Regel und einer Buchung erzeugte Nachricht mit festem Versandzeitpunkt |
+| **Platzhalter** | Markierung in einer Vorlage, die beim Versand durch einen konkreten Wert ersetzt wird (z. B. Gastname, Anreisedatum) |
+| **WhatsApp Business Cloud API** | Offizielle Schnittstelle von Meta für den automatisierten WhatsApp-Versand an Kunden |
+| **Genehmigte Vorlage** | Von Meta vorab freigegebener Nachrichtentext, ohne den außerhalb eines laufenden Gesprächs kein WhatsApp-Versand möglich ist |
+| **Bounce** | Rückläufer einer nicht zustellbaren E-Mail |
